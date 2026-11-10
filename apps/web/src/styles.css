@@ -46,6 +46,23 @@ a {
   text-decoration: none;
 }
 
+.main-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.main-nav a {
+  color: #176353;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.main-nav a:hover {
+  text-decoration: underline;
+}
+
 .identity-copy {
   display: grid;
   gap: 2px;
@@ -289,44 +306,210 @@ a {
   border-top: 1px solid #dce6e0;
 }
 
-.placeholder-main {
+.booking-main {
   display: grid;
   flex: 1;
-  place-items: center;
-  padding-block: 64px;
+  justify-items: center;
+  padding-block: 48px 64px;
 }
 
-.placeholder-card {
+.booking-card {
   display: grid;
-  width: min(100%, 640px);
-  justify-items: start;
-  padding: clamp(28px, 6vw, 56px);
+  width: min(100%, 820px);
+  padding: clamp(24px, 5vw, 48px);
   border: 1px solid #dce6e0;
   border-radius: 24px;
   background: rgb(255 255 255 / 78%);
-  gap: 18px;
+  gap: 28px;
 }
 
-.placeholder-card h1 {
+.booking-heading {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+
+.booking-heading h1 {
   color: #172d29;
   font-size: clamp(34px, 6vw, 48px);
   font-weight: 650;
   line-height: 1.1;
 }
 
-.placeholder-card p {
+.booking-heading p,
+.offer-card p {
   font-size: 16px;
   line-height: 1.7;
 }
 
-.placeholder-card a {
+.profile-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.profile-photo {
+  width: 76px;
+  height: 76px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.profile-summary h2 {
+  color: #172d29;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.booking-form {
+  display: grid;
+  gap: 16px;
+}
+
+.booking-form h2 {
+  color: #172d29;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.form-error {
+  padding: 12px 16px;
+  border: 1px solid #e8c2bd;
+  border-radius: 12px;
+  background: #fff5f3;
+  color: #8c2f24;
+  line-height: 1.5;
+}
+
+.confirmation-code {
+  color: #176353;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.owner-card {
+  align-content: start;
+}
+
+.owner-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.owner-bookings {
+  display: grid;
+  gap: 14px;
+}
+
+.owner-booking {
+  display: grid;
+  border: 1px solid #dce6e0;
+  border-radius: 16px;
+  background: #f8fbf8;
+  gap: 8px;
+}
+
+.owner-booking h2 {
+  color: #172d29;
+  font-size: 18px;
+}
+
+.booking-form button,
+.owner-heading button {
+  justify-self: start;
+}
+
+.demo-notice {
+  padding: 12px 16px;
+  border: 1px solid #e8d6b8;
+  border-radius: 12px;
+  background: #fffaf1;
+  color: #624a27;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.offer-card {
+  display: grid;
+  border: 1px solid #dce6e0;
+  border-radius: 18px;
+  background: #f8fbf8;
+  gap: 8px;
+}
+
+.offer-card h2,
+.booking-step h2 {
+  color: #172d29;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.offer-details {
+  color: #176353;
+  font-weight: 650;
+}
+
+.booking-step {
+  display: grid;
+  gap: 14px;
+}
+
+.choice-row,
+.date-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.date-grid button,
+.time-grid button {
+  min-height: 44px;
+}
+
+.booking-card button {
+  background-color: #e8f0eb;
   color: #14594d;
 }
 
-.placeholder-card a:focus-visible,
+.booking-card button[data-variant='filled'] {
+  background-color: #14594d;
+  color: #fff;
+}
+
+.booking-card button:disabled {
+  background-color: #f0f3f1;
+  color: #84918b;
+}
+
+.booking-card button:focus-visible,
 .identity:focus-visible {
   outline: 3px solid #d7a866;
   outline-offset: 4px;
+}
+
+.booking-empty {
+  padding: 18px;
+  border-radius: 12px;
+  background: #f4f7f4;
+  line-height: 1.6;
+}
+
+.selection-summary {
+  color: #176353;
+  font-weight: 650;
+}
+
+.booking-disclaimer {
+  padding-top: 20px;
+  border-top: 1px solid #dce6e0;
+  line-height: 1.6;
 }
 
 @media (max-width: 760px) {
@@ -334,6 +517,10 @@ a {
     right: -72px;
     width: 230px;
     opacity: 0.25;
+  }
+
+  .date-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .hero-copy {
@@ -404,8 +591,12 @@ a {
     padding: 24px;
   }
 
-  .placeholder-main {
-    padding-block: 40px;
+  .booking-main {
+    padding-block: 32px 48px;
+  }
+
+  .date-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

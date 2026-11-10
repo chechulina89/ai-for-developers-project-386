@@ -1,9 +1,158 @@
 openapi: 3.0.0
 info:
-  title: Project 386 API
+  title: Meetly API
   version: 0.0.0
 tags: []
 paths:
+  /api/bookings:
+    post:
+      operationId: createBooking
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingConfirmation'
+        '409':
+          description: The request conflicts with the current state of the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+  /api/meeting-types:
+    get:
+      operationId: getMeetingTypes
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingTypesResponse'
+  /api/meeting-types/{meetingTypeId}/availability:
+    get:
+      operationId: getAvailability
+      parameters:
+        - name: meetingTypeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+          explode: false
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+          explode: false
+        - name: durationMinutes
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/MeetingDuration'
+          explode: false
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityResponse'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/owner/bookings:
+    get:
+      operationId: getOwnerBookings
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerBookingsResponse'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/owner/session:
+    post:
+      operationId: createOwnerSession
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+          headers:
+            Set-Cookie:
+              required: false
+              schema:
+                type: string
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: Client error
+          headers:
+            Retry-After:
+              required: true
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerLoginRequest'
+    delete:
+      operationId: deleteOwnerSession
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+          headers:
+            Set-Cookie:
+              required: false
+              schema:
+                type: string
   /health:
     get:
       operationId: getHealth
@@ -22,4 +171,219 @@ paths:
                       - ok
                 required:
                   - status
-components: {}
+components:
+  schemas:
+    ApiError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+    AvailabilityDate:
+      type: object
+      required:
+        - date
+        - slots
+      properties:
+        date:
+          type: string
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilitySlot'
+    AvailabilityResponse:
+      type: object
+      required:
+        - timeZone
+        - from
+        - to
+        - dates
+      properties:
+        timeZone:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        dates:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityDate'
+    AvailabilitySlot:
+      type: object
+      required:
+        - startAt
+        - endAt
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+    BookingConfirmation:
+      type: object
+      required:
+        - meetingTypeTitle
+        - durationMinutes
+        - startAt
+        - endAt
+        - ownerName
+        - guestName
+        - confirmationCode
+      properties:
+        meetingTypeTitle:
+          type: string
+        durationMinutes:
+          $ref: '#/components/schemas/MeetingDuration'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        ownerName:
+          type: string
+        guestName:
+          type: string
+        confirmationCode:
+          type: string
+    CreateBookingRequest:
+      type: object
+      required:
+        - meetingTypeId
+        - startAt
+        - durationMinutes
+        - guest
+      properties:
+        meetingTypeId:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          $ref: '#/components/schemas/MeetingDuration'
+        guest:
+          $ref: '#/components/schemas/GuestInput'
+    GuestInput:
+      type: object
+      required:
+        - name
+        - phone
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+    MeetingDuration:
+      type: number
+      enum:
+        - 30
+        - 45
+        - 60
+    MeetingType:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - durationMinutes
+        - onlineInstructions
+        - priceKzt
+        - owner
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        durationMinutes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeetingDuration'
+        preparationInstructions:
+          type: string
+        onlineInstructions:
+          type: string
+        priceKzt:
+          type: integer
+          format: int32
+        owner:
+          $ref: '#/components/schemas/OwnerProfile'
+    MeetingTypesResponse:
+      type: object
+      required:
+        - meetingTypes
+      properties:
+        meetingTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeetingType'
+    OwnerBooking:
+      type: object
+      required:
+        - meetingTypeTitle
+        - startAt
+        - endAt
+        - guestName
+        - guestPhone
+        - confirmationCode
+      properties:
+        meetingTypeTitle:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        guestName:
+          type: string
+        guestPhone:
+          type: string
+        confirmationCode:
+          type: string
+    OwnerBookingsResponse:
+      type: object
+      required:
+        - timeZone
+        - bookings
+      properties:
+        timeZone:
+          type: string
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/OwnerBooking'
+    OwnerLoginRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+        password:
+          type: string
+    OwnerProfile:
+      type: object
+      required:
+        - name
+        - description
+        - photoUrl
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        photoUrl:
+          type: string

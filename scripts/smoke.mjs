@@ -18,7 +18,12 @@ await new Promise((resolve, reject) => {
 });
 
 const child = spawn(process.execPath, ['apps/api/dist/server.js'], {
-  env: { ...process.env, PORT: String(address.port) },
+  env: {
+    ...process.env,
+    OWNER_LOGIN: 'smoke-owner',
+    OWNER_PASSWORD: 'smoke-password',
+    PORT: String(address.port),
+  },
   stdio: 'inherit',
 });
 

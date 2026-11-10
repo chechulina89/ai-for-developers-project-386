@@ -3,7 +3,10 @@ import { buildApp } from './app.js';
 
 describe('GET /health', () => {
   it('returns a successful JSON status', async () => {
-    const app = buildApp();
+    const app = buildApp({
+      ownerLogin: 'test-owner',
+      ownerPassword: 'test-password',
+    });
 
     try {
       const response = await app.inject({ method: 'GET', url: '/health' });
