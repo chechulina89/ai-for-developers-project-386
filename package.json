@@ -1,0 +1,43 @@
+{
+  "name": "ai-for-developers-project-386",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "generate": "npm run generate --workspace=@project/api-contract && npm run generate --workspace=@project/api-client",
+    "generate:check": "npm run generate && node scripts/check-generated.mjs",
+    "dev:web": "npm run dev --workspace=@project/web",
+    "dev:api": "npm run dev --workspace=@project/api",
+    "build": "npm run build --workspace=@project/api && npm run build --workspace=@project/web",
+    "smoke": "npm run build --workspace=@project/api && node scripts/smoke.mjs",
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write . --ignore-path .prettierignore",
+    "format:check": "prettier --check . --ignore-path .prettierignore",
+    "typecheck": "tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p packages/api-client/tsconfig.json",
+    "check": "npm run generate:check && npm run lint && npm run format:check && npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@typespec/compiler": "1.17.0",
+    "@typespec/http": "1.17.0",
+    "@typespec/openapi3": "1.17.0",
+    "eslint": "10.14.0",
+    "jsdom": "31.0.0",
+    "orval": "8.47.0",
+    "prettier": "3.9.10",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.7",
+    "vitest": "5.1.0"
+  }
+}

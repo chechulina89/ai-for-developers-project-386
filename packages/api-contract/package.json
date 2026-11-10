@@ -1,0 +1,7 @@
+{
+  "name": "@project/api-contract",
+  "private": true,
+  "scripts": {
+    "generate": "tsp compile main.tsp --emit @typespec/openapi3 --output-dir ./openapi"
+  }
+}

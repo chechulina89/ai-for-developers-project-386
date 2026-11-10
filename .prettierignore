@@ -1,0 +1,6 @@
+**/node_modules/**
+**/dist/**
+**/coverage/**
+.agents/skills/**
+packages/api-contract/openapi/**
+packages/api-client/src/generated/**
