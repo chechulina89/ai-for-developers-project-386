@@ -19,7 +19,9 @@ npm run dev:web
 ```
 
 The API listens on port 3000 and the Vite development server proxies `/api` to
-it. The owner credentials are required by the API and must not be committed.
+it. Owner credentials enable owner sign-in and must not be committed. If both
+are unset, the API starts but owner sign-in returns `503`; setting only one
+credential is a startup error.
 
 ## Docker
 
@@ -63,9 +65,10 @@ workspace/month and are not suitable for production data. See
 [`docs/research/render-mcp-opencode-deploy.md`](./docs/research/render-mcp-opencode-deploy.md)
 for current limits and source links.
 
-Required runtime environment variable names are `OWNER_LOGIN` and
-`OWNER_PASSWORD`; Render provides `PORT` to the container. `NODE_ENV` is set
-to production by the Docker image.
+To enable owner sign-in, set both `OWNER_LOGIN` and `OWNER_PASSWORD` in the
+hosting environment; the API starts with both unset but owner sign-in returns
+`503`. Setting only one is a startup error. Render provides `PORT` to the
+container. `NODE_ENV` is set to production by the Docker image.
 
 Bookings, idempotency keys, and owner sessions currently exist only in API
 process memory. They are lost on restart, redeploy, or instance spin-down.

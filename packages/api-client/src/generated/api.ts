@@ -341,10 +341,15 @@ export type createOwnerSessionResponse429 = {
   status: 429
 }
 
+export type createOwnerSessionResponse503 = {
+  data: ApiError
+  status: 503
+}
+
 export type createOwnerSessionResponseSuccess = (createOwnerSessionResponse204) & {
   headers: Headers;
 };
-export type createOwnerSessionResponseError = (createOwnerSessionResponse401 | createOwnerSessionResponse429) & {
+export type createOwnerSessionResponseError = (createOwnerSessionResponse401 | createOwnerSessionResponse429 | createOwnerSessionResponse503) & {
   headers: Headers;
 };
 

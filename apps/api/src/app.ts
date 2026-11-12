@@ -257,15 +257,20 @@ function validateBookingInput(
 }
 
 export function buildApp(config: AppConfig) {
-  if (!config.ownerLogin || !config.ownerPassword) {
-    throw new Error('OWNER_LOGIN and OWNER_PASSWORD must be configured');
-  }
-
   const app = Fastify({ logger: true });
   const store = config.store ?? new MemoryStore();
   const now = config.now ?? (() => new Date());
   const isProduction =
     config.isProduction ?? process.env.NODE_ENV === 'production';
+  const ownerAuthConfigured = Boolean(
+    config.ownerLogin && config.ownerPassword,
+  );
+
+  if (!ownerAuthConfigured) {
+    app.log.warn(
+      'Owner sign-in is disabled because OWNER_LOGIN and OWNER_PASSWORD are not configured',
+    );
+  }
 
   if (isProduction) {
     app.register(fastifyStatic, {
@@ -458,6 +463,15 @@ export function buildApp(config: AppConfig) {
   app.post<{ Body: OwnerLoginInput }>(
     '/api/owner/session',
     async (request, reply) => {
+      if (!ownerAuthConfigured) {
+        return sendError(
+          reply,
+          503,
+          'OWNER_AUTH_NOT_CONFIGURED',
+          'Вход владельца недоступен: задайте OWNER_LOGIN и OWNER_PASSWORD.',
+        );
+      }
+
       const ip = request.ip;
       const retryAfter = store.getLoginRetryAfter(ip, now().getTime());
 
@@ -571,11 +585,14 @@ export function readApiConfigFromEnv(): AppConfig {
   const ownerLogin = process.env.OWNER_LOGIN?.trim();
   const ownerPassword = process.env.OWNER_PASSWORD;
 
-  if (!ownerLogin || !ownerPassword) {
+  if (Boolean(ownerLogin) !== Boolean(ownerPassword)) {
     throw new Error(
-      'Set OWNER_LOGIN and OWNER_PASSWORD before starting the API server',
+      'Set both OWNER_LOGIN and OWNER_PASSWORD, or leave both unset to disable owner sign-in',
     );
   }
 
-  return { ownerLogin, ownerPassword };
+  return {
+    ownerLogin: ownerLogin ?? '',
+    ownerPassword: ownerPassword ?? '',
+  };
 }

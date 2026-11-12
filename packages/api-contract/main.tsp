@@ -127,6 +127,11 @@ model RateLimitErrorResponse {
   @body body: ApiError;
 }
 
+model ServiceUnavailableErrorResponse {
+  @statusCode _: 503;
+  @body body: ApiError;
+}
+
 @route("/api/meeting-types")
 @get
 op getMeetingTypes(): MeetingTypesResponse;
@@ -153,7 +158,11 @@ op createBooking(
 @post
 op createOwnerSession(
   @body request: OwnerLoginRequest,
-): NoContentResponse | AuthenticationErrorResponse | RateLimitErrorResponse;
+):
+  | NoContentResponse
+  | AuthenticationErrorResponse
+  | RateLimitErrorResponse
+  | ServiceUnavailableErrorResponse;
 
 @route("/api/owner/session")
 @delete

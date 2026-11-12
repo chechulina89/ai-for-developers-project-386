@@ -14,6 +14,40 @@ describe('production web hosting', () => {
     }
   });
 
+  it('serves the app without owner credentials and disables owner sign-in', async () => {
+    staticRoot = await mkdtemp(join(tmpdir(), 'meetly-web-'));
+    await writeFile(join(staticRoot, 'index.html'), '<main>Meetly</main>');
+
+    const app = buildApp({
+      ownerLogin: '',
+      ownerPassword: '',
+      isProduction: true,
+      staticRoot,
+    });
+
+    try {
+      const health = await app.inject({ method: 'GET', url: '/health' });
+      const meetingTypes = await app.inject({
+        method: 'GET',
+        url: '/api/meeting-types',
+      });
+      const ownerSession = await app.inject({
+        method: 'POST',
+        url: '/api/owner/session',
+        payload: { login: 'owner', password: 'password' },
+      });
+
+      expect(health.statusCode).toBe(200);
+      expect(meetingTypes.statusCode).toBe(200);
+      expect(ownerSession.statusCode).toBe(503);
+      expect(ownerSession.json()).toMatchObject({
+        code: 'OWNER_AUTH_NOT_CONFIGURED',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('serves static assets and falls back to the SPA outside API routes', async () => {
     staticRoot = await mkdtemp(join(tmpdir(), 'meetly-web-'));
     await writeFile(join(staticRoot, 'index.html'), '<main>Meetly</main>');
