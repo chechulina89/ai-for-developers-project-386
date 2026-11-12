@@ -21,6 +21,55 @@ npm run dev:web
 The API listens on port 3000 and the Vite development server proxies `/api` to
 it. The owner credentials are required by the API and must not be committed.
 
+## Docker
+
+Build and run the production image from the repository root:
+
+```sh
+docker build -t meetly .
+PORT=8080
+docker run --rm -p "$PORT:$PORT" \
+  -e PORT \
+  -e OWNER_LOGIN \
+  -e OWNER_PASSWORD \
+  meetly
+```
+
+Set `OWNER_LOGIN` and `OWNER_PASSWORD` in the shell before running the
+container. `PORT` defaults to `3000`; set it to the internal container port and
+publish the same port as shown above. Open `http://localhost:8080`. The API
+serves the built web app and `/api` from the same process. Bookings and sessions
+remain in memory and are lost when the container restarts.
+
+## Render deployment
+
+Public app URL: not deployed yet; deployment is waiting for approval of the
+hosting plan and repository publication.
+
+The project OpenCode MCP configuration is in [`opencode.json`](./opencode.json).
+Render MCP uses `RENDER_API_KEY` from the environment; do not put the key in
+this repository. Set it before starting OpenCode, then check the connection
+with `opencode mcp list`. Create the key through the Render Dashboard and grant
+only the access needed for the chosen workspace.
+
+Render MCP can build the Dockerfile from the connected Git repository. The
+current MCP tool does not offer a Free compute plan; its smallest supported
+service plan is approximately $7/month (Hobby workspace is $0/month plus
+compute). Free web services are available outside this MCP flow, but sleep
+after 15 idle minutes and are not suitable for production data. See
+[`docs/research/render-mcp-opencode-deploy.md`](./docs/research/render-mcp-opencode-deploy.md)
+for current limits and source links. No hosting resources have been created.
+
+Required runtime environment variable names are `OWNER_LOGIN` and
+`OWNER_PASSWORD`; Render provides `PORT` to the container. `NODE_ENV` is set
+to production by the Docker image.
+
+Bookings, idempotency keys, and owner sessions currently exist only in API
+process memory. They are lost on restart, redeploy, or instance spin-down.
+Render Postgres is a suitable persistent store (currently from $6/month), but
+this app does not yet integrate with a database. Do not use real personal data
+until persistent storage and production data handling are implemented.
+
 Run `mise run check` for contract generation checks, lint, formatting, type
 checks, Vitest unit/API/component tests, production builds, API smoke tests,
 Playwright Chromium E2E tests, and `hk check --all`. Install Chromium for local

@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { resolve } from 'node:path';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   formatZonedDateTime,
@@ -43,6 +45,7 @@ type AppConfig = {
   ownerPassword: string;
   now?: () => Date;
   isProduction?: boolean;
+  staticRoot?: string;
   store?: MemoryStore;
 };
 
@@ -263,6 +266,13 @@ export function buildApp(config: AppConfig) {
   const now = config.now ?? (() => new Date());
   const isProduction =
     config.isProduction ?? process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    app.register(fastifyStatic, {
+      root: config.staticRoot ?? resolve(process.cwd(), 'apps/web/dist'),
+      prefix: '/',
+    });
+  }
 
   app.setErrorHandler((error, request, reply) => {
     if (isRecord(error) && error.statusCode === 400) {
@@ -535,6 +545,24 @@ export function buildApp(config: AppConfig) {
 
     return { timeZone, bookings };
   });
+
+  if (isProduction) {
+    app.setNotFoundHandler((request, reply) => {
+      const pathname = request.url.split('?')[0] ?? '';
+
+      if (
+        (request.method !== 'GET' && request.method !== 'HEAD') ||
+        pathname === '/api' ||
+        pathname.startsWith('/api/')
+      ) {
+        return sendError(reply, 404, 'NOT_FOUND', 'Маршрут не найден.');
+      }
+
+      return reply
+        .type('text/html')
+        .sendFile('index.html', { maxAge: 0, immutable: false });
+    });
+  }
 
   return app;
 }
