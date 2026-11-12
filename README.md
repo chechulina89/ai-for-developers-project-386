@@ -43,8 +43,8 @@ remain in memory and are lost when the container restarts.
 
 ## Render deployment
 
-Public app URL: not deployed yet; deployment is waiting for approval of the
-hosting plan and repository publication.
+Public app URL: [https://meetly-booking.onrender.com](https://meetly-booking.onrender.com).
+The service is deployed on Render Free; auto-deploy is disabled.
 
 The project OpenCode MCP configuration is in [`opencode.json`](./opencode.json).
 Render MCP uses `RENDER_API_KEY` from the environment; do not put the key in
@@ -53,12 +53,15 @@ with `opencode mcp list`. Create the key through the Render Dashboard and grant
 only the access needed for the chosen workspace.
 
 Render MCP can build the Dockerfile from the connected Git repository. The
-current MCP tool does not offer a Free compute plan; its smallest supported
-service plan is approximately $7/month (Hobby workspace is $0/month plus
-compute). Free web services are available outside this MCP flow, but sleep
-after 15 idle minutes and are not suitable for production data. See
+Render MCP tool's documented plan list omits Free, but this service was created
+on the Free plan. Check the service's **Instance Type** in Render Dashboard
+before relying on its cost. The smallest paid web-service instance is about
+$7/month as of November 2026 (Hobby workspace is $0/month plus compute).
+Render Free services sleep after 15 idle minutes; the first request after a
+sleep can be delayed by 50 seconds or more. They have 750 instance hours per
+workspace/month and are not suitable for production data. See
 [`docs/research/render-mcp-opencode-deploy.md`](./docs/research/render-mcp-opencode-deploy.md)
-for current limits and source links. No hosting resources have been created.
+for current limits and source links.
 
 Required runtime environment variable names are `OWNER_LOGIN` and
 `OWNER_PASSWORD`; Render provides `PORT` to the container. `NODE_ENV` is set
