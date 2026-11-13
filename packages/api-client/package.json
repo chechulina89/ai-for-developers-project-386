@@ -1,0 +1,8 @@
+{
+  "name": "@project/api-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "orval --config orval.config.mjs"
+  }
+}
