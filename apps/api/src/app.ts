@@ -1,4 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import { resolve } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -11,11 +16,14 @@ import {
   isDateKey,
   isMeetingDuration,
   meetingDurations,
-  meetingTypeId,
   normalizePhone,
   timeZone,
 } from './domain.js';
-import { MemoryStore, type StoredBooking } from './store.js';
+import {
+  MemoryStore,
+  type StoredBooking,
+  type StoredMeetingType,
+} from './store.js';
 
 const sessionCookieName = 'meetly_owner_session';
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
@@ -27,17 +35,6 @@ const demoOwner = {
   description:
     'Это демонстрационный профиль Meetly. Здесь будет информация о специалисте и его опыте.',
   photoUrl: '/demo-specialist.svg',
-};
-
-const demoMeetingType = {
-  id: meetingTypeId,
-  title: 'Демонстрационная онлайн-консультация',
-  description:
-    'Индивидуальная онлайн-встреча, чтобы обсудить ваш запрос и наметить дальнейшие шаги.',
-  durationMinutes: [...meetingDurations],
-  onlineInstructions: 'Ссылка для подключения будет отправлена отдельно.',
-  priceKzt: 5000,
-  owner: demoOwner,
 };
 
 type AppConfig = {
@@ -70,6 +67,12 @@ type Guest = {
 type OwnerLoginInput = {
   login?: unknown;
   password?: unknown;
+};
+
+type CreateMeetingTypeInput = {
+  title?: unknown;
+  description?: unknown;
+  durationMinutes?: unknown;
 };
 
 function errorBody(
@@ -149,11 +152,24 @@ function createConfirmation(booking: StoredBooking) {
   };
 }
 
+function isOwnerAuthenticated(
+  request: FastifyRequest,
+  store: MemoryStore,
+  now: number,
+) {
+  const token = getCookie(request, sessionCookieName);
+
+  return Boolean(token && store.hasSession(token, now));
+}
+
 function validateBookingInput(
   input: unknown,
   now: Date,
+  meetingTypes: StoredMeetingType[],
+  enforceBookingWindow = true,
 ): {
   value?: {
+    meetingType: StoredMeetingType;
     startAt: number;
     durationMinutes: (typeof meetingDurations)[number];
     guestName: string;
@@ -170,6 +186,9 @@ function validateBookingInput(
 
   const body = input as CreateBookingInput;
   const guest = isRecord(body.guest) ? (body.guest as Guest) : {};
+  const selectedMeetingType = meetingTypes.find(
+    (meetingType) => meetingType.id === body.meetingTypeId,
+  );
   const guestName = typeof guest.name === 'string' ? guest.name.trim() : '';
   const normalizedPhone =
     typeof guest.phone === 'string' ? normalizePhone(guest.phone) : null;
@@ -184,11 +203,16 @@ function validateBookingInput(
     Boolean(startAtMatch && isDateKey(startAtMatch[1] ?? '')) &&
     Number.isFinite(startAt);
 
-  if (body.meetingTypeId !== meetingTypeId) {
+  if (!selectedMeetingType) {
     fieldErrors.meetingTypeId = 'Выберите доступное предложение.';
   }
-  if (!validDuration) {
-    fieldErrors.durationMinutes = 'Выберите длительность 30, 45 или 60 минут.';
+  if (
+    !validDuration ||
+    (selectedMeetingType &&
+      !selectedMeetingType.durationMinutes.includes(durationMinutes))
+  ) {
+    fieldErrors.durationMinutes =
+      'Выберите доступную для этого типа длительность.';
   }
   if (!guestName || guestName.length > 120) {
     fieldErrors['guest.name'] = 'Укажите имя длиной не более 120 символов.';
@@ -201,7 +225,7 @@ function validateBookingInput(
     fieldErrors.startAt = 'Укажите корректные дату и время.';
   }
 
-  if (validStartAt && validDuration) {
+  if (validStartAt && validDuration && selectedMeetingType) {
     const local = getLocalDateTime(new Date(startAt));
     const window = getBookingWindow(now);
     const windowIndex = window.indexOf(local.dateKey);
@@ -210,7 +234,7 @@ function validateBookingInput(
 
     if (
       !isDateKey(local.dateKey) ||
-      windowIndex < 0 ||
+      (enforceBookingWindow && windowIndex < 0) ||
       minuteOfDay % 30 !== 0 ||
       new Date(startAt).getUTCSeconds() !== 0 ||
       new Date(startAt).getUTCMilliseconds() !== 0
@@ -235,10 +259,12 @@ function validateBookingInput(
   }
 
   if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
-  if (!validDuration || !normalizedPhone) return { fieldErrors };
+  if (!validDuration || !normalizedPhone || !selectedMeetingType) {
+    return { fieldErrors };
+  }
 
   const normalized = {
-    meetingTypeId,
+    meetingTypeId: selectedMeetingType.id,
     startAt,
     durationMinutes,
     guestName,
@@ -247,6 +273,7 @@ function validateBookingInput(
 
   return {
     value: {
+      meetingType: selectedMeetingType,
       startAt,
       durationMinutes,
       guestName,
@@ -302,7 +329,7 @@ export function buildApp(config: AppConfig) {
   app.get('/health', async () => ({ status: 'ok' }));
 
   app.get('/api/meeting-types', async () => ({
-    meetingTypes: [demoMeetingType],
+    meetingTypes: store.meetingTypes,
   }));
 
   app.get<{
@@ -319,8 +346,12 @@ export function buildApp(config: AppConfig) {
       const { from, to, durationMinutes: durationParam } = request.query;
       const duration = Number(durationParam);
 
+      const selectedMeetingType = store.meetingTypes.find(
+        (meetingType) => meetingType.id === requestedTypeId,
+      );
+
       if (
-        requestedTypeId !== meetingTypeId ||
+        !selectedMeetingType ||
         !from ||
         !to ||
         !isMeetingDuration(duration)
@@ -330,6 +361,15 @@ export function buildApp(config: AppConfig) {
           422,
           'VALIDATION_ERROR',
           'Проверьте тип встречи, диапазон дат и длительность.',
+        );
+      }
+
+      if (!selectedMeetingType.durationMinutes.includes(duration)) {
+        return sendError(
+          reply,
+          422,
+          'VALIDATION_ERROR',
+          'Выберите доступную для этого типа длительность.',
         );
       }
 
@@ -371,15 +411,20 @@ export function buildApp(config: AppConfig) {
   app.post<{ Body: CreateBookingInput }>(
     '/api/bookings',
     async (request, reply) => {
-      const validation = validateBookingInput(request.body, now());
+      const fingerprintValidation = validateBookingInput(
+        request.body,
+        now(),
+        store.meetingTypes,
+        false,
+      );
 
-      if (!validation.value) {
+      if (!fingerprintValidation.value) {
         return sendError(
           reply,
           422,
           'VALIDATION_ERROR',
           'Проверьте введённые данные.',
-          validation.fieldErrors,
+          fingerprintValidation.fieldErrors,
         );
       }
 
@@ -401,7 +446,7 @@ export function buildApp(config: AppConfig) {
       const previous = store.getIdempotencyRecord(idempotencyKey, currentTime);
 
       if (previous) {
-        if (previous.fingerprint !== validation.value.fingerprint) {
+        if (previous.fingerprint !== fingerprintValidation.value.fingerprint) {
           return sendError(
             reply,
             409,
@@ -411,6 +456,22 @@ export function buildApp(config: AppConfig) {
         }
 
         return reply.status(201).send(createConfirmation(previous.booking));
+      }
+
+      const validation = validateBookingInput(
+        request.body,
+        now(),
+        store.meetingTypes,
+      );
+
+      if (!validation.value) {
+        return sendError(
+          reply,
+          422,
+          'VALIDATION_ERROR',
+          'Проверьте введённые данные.',
+          validation.fieldErrors,
+        );
       }
 
       const endAt =
@@ -438,8 +499,8 @@ export function buildApp(config: AppConfig) {
       );
 
       const booking: StoredBooking = {
-        meetingTypeId,
-        meetingTypeTitle: demoMeetingType.title,
+        meetingTypeId: validation.value.meetingType.id,
+        meetingTypeTitle: validation.value.meetingType.title,
         durationMinutes: validation.value.durationMinutes,
         startAt: validation.value.startAt,
         endAt,
@@ -532,10 +593,71 @@ export function buildApp(config: AppConfig) {
       .send();
   });
 
-  app.get('/api/owner/bookings', async (request, reply) => {
-    const token = getCookie(request, sessionCookieName);
+  app.post<{ Body: CreateMeetingTypeInput }>(
+    '/api/owner/meeting-types',
+    async (request, reply) => {
+      if (!isOwnerAuthenticated(request, store, now().getTime())) {
+        return sendError(
+          reply,
+          401,
+          'UNAUTHENTICATED',
+          'Войдите, чтобы управлять типами встреч.',
+        );
+      }
 
-    if (!token || !store.hasSession(token, now().getTime())) {
+      const body = isRecord(request.body) ? request.body : {};
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      const description =
+        typeof body.description === 'string' ? body.description.trim() : '';
+      const rawDurations = Array.isArray(body.durationMinutes)
+        ? body.durationMinutes
+        : [];
+      const durations = rawDurations.filter(isMeetingDuration);
+      const fieldErrors: Record<string, string> = {};
+
+      if (!title || title.length > 120) {
+        fieldErrors.title = 'Укажите название длиной до 120 символов.';
+      }
+      if (!description || description.length > 500) {
+        fieldErrors.description = 'Укажите описание длиной до 500 символов.';
+      }
+      if (
+        durations.length === 0 ||
+        durations.length !== rawDurations.length ||
+        new Set(durations).size !== durations.length
+      ) {
+        fieldErrors.durationMinutes =
+          'Выберите одну или несколько длительностей: 30, 45 или 60 минут.';
+      }
+
+      if (Object.keys(fieldErrors).length > 0) {
+        return sendError(
+          reply,
+          422,
+          'VALIDATION_ERROR',
+          'Проверьте данные типа встречи.',
+          fieldErrors,
+        );
+      }
+
+      const meetingType: StoredMeetingType = {
+        id: randomUUID(),
+        title,
+        description,
+        durationMinutes: durations,
+        onlineInstructions: 'Ссылка для подключения будет отправлена отдельно.',
+        priceKzt: 5000,
+        owner: demoOwner,
+      };
+
+      store.addMeetingType(meetingType);
+
+      return reply.status(201).send(meetingType);
+    },
+  );
+
+  app.get('/api/owner/bookings', async (request, reply) => {
+    if (!isOwnerAuthenticated(request, store, now().getTime())) {
       return sendError(
         reply,
         401,

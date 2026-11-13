@@ -60,6 +60,12 @@ export interface CreateBookingRequest {
   guest: GuestInput;
 }
 
+export interface CreateMeetingTypeRequest {
+  title: string;
+  description: string;
+  durationMinutes: MeetingDuration[];
+}
+
 export interface OwnerProfile {
   name: string;
   description: string;
@@ -322,6 +328,72 @@ export const getOwnerBookings = async ( options?: RequestInit): Promise<getOwner
 
   const data: getOwnerBookingsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getOwnerBookingsResponse
+}
+
+
+
+export type createMeetingTypeResponse201 = {
+  data: MeetingType
+  status: 201
+}
+
+export type createMeetingTypeResponse401 = {
+  data: ApiError
+  status: 401
+}
+
+export type createMeetingTypeResponse422 = {
+  data: ApiError
+  status: 422
+}
+
+export type createMeetingTypeResponseSuccess = (createMeetingTypeResponse201) & {
+  headers: Headers;
+};
+export type createMeetingTypeResponseError = (createMeetingTypeResponse401 | createMeetingTypeResponse422) & {
+  headers: Headers;
+};
+
+export type createMeetingTypeResponse = (createMeetingTypeResponseSuccess | createMeetingTypeResponseError)
+
+export const getCreateMeetingTypeUrl = () => {
+
+
+
+
+  return `/api/owner/meeting-types`
+}
+
+export const createMeetingType = async (createMeetingTypeRequest: CreateMeetingTypeRequest, options?: RequestInit): Promise<createMeetingTypeResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getCreateMeetingTypeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createMeetingTypeRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: createMeetingTypeResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as createMeetingTypeResponse
 }
 
 

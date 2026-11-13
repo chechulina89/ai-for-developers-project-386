@@ -2,13 +2,16 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   MantineProvider,
   SimpleGrid,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from '@mantine/core';
 import {
+  createMeetingType,
   createBooking,
   createOwnerSession,
   deleteOwnerSession,
@@ -65,6 +68,11 @@ const steps = [
 ];
 
 const timezone = 'Asia/Almaty';
+const availableDurations = [
+  MeetingDuration.NUMBER_30,
+  MeetingDuration.NUMBER_45,
+  MeetingDuration.NUMBER_60,
+] satisfies MeetingDuration[];
 
 function Header() {
   return (
@@ -81,10 +89,8 @@ function Header() {
         </span>
       </a>
       <nav className="main-nav" aria-label="Основная навигация">
+        <a href="/booking">Записаться</a>
         <a href="/owner">Для владельца</a>
-        <Badge color="teal" variant="light">
-          В разработке
-        </Badge>
       </nav>
     </header>
   );
@@ -262,6 +268,7 @@ function getApiError(value: unknown) {
 
 function BookingPage() {
   const [meetingType, setMeetingType] = useState<MeetingType | null>(null);
+  const [meetingTypes, setMeetingTypes] = useState<MeetingType[]>([]);
   const [dates, setDates] = useState<AvailabilityDate[]>([]);
   const [duration, setDuration] = useState<MeetingDuration>(
     MeetingDuration.NUMBER_30,
@@ -287,6 +294,7 @@ function BookingPage() {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const idempotencyKey = useRef<{ fingerprint: string; key: string } | null>(
     null,
   );
@@ -298,18 +306,21 @@ function BookingPage() {
       .then((response) => {
         if (!active) return;
         if (response.status !== 200) {
-          setErrorMessage('Не удалось загрузить предложение специалиста.');
+          setErrorMessage('Не удалось загрузить типы встреч.');
           return;
         }
 
-        const [offer] = response.data.meetingTypes;
-        if (!offer) {
-          setErrorMessage('Сейчас нет доступных предложений.');
+        const [firstMeetingType] = response.data.meetingTypes;
+        if (!firstMeetingType) {
+          setErrorMessage('Сейчас нет доступных типов встреч.');
           return;
         }
 
-        setMeetingType(offer);
-        setDuration(offer.durationMinutes[0] ?? MeetingDuration.NUMBER_30);
+        setMeetingTypes(response.data.meetingTypes);
+        setMeetingType(firstMeetingType);
+        setDuration(
+          firstMeetingType.durationMinutes[0] ?? MeetingDuration.NUMBER_30,
+        );
       })
       .catch(() => {
         if (active) {
@@ -461,6 +472,32 @@ function BookingPage() {
           <Text className="confirmation-code" role="status">
             Код бронирования: {confirmation.confirmationCode}
           </Text>
+          <Button
+            type="button"
+            variant="light"
+            onClick={async () => {
+              if (!navigator.clipboard?.writeText) {
+                setCopyMessage('Копирование недоступно в этом браузере.');
+                return;
+              }
+
+              try {
+                await navigator.clipboard.writeText(
+                  confirmation.confirmationCode,
+                );
+                setCopyMessage('Код скопирован.');
+              } catch {
+                setCopyMessage('Не удалось скопировать код бронирования.');
+              }
+            }}
+          >
+            Скопировать код
+          </Button>
+          {copyMessage && (
+            <Text role="status" aria-live="polite">
+              {copyMessage}
+            </Text>
+          )}
           <Text className="demo-notice">
             Это демонстрационная запись в памяти процесса. Она может исчезнуть
             после перезапуска сервера.
@@ -493,9 +530,43 @@ function BookingPage() {
         </div>
 
         {loadingOffer ? (
-          <Text role="status">Загружаем предложение специалиста…</Text>
+          <Text role="status">Загружаем типы встреч…</Text>
         ) : meetingType ? (
           <>
+            <section
+              className="booking-step"
+              aria-labelledby="meeting-type-title"
+            >
+              <Title id="meeting-type-title" order={2}>
+                Выберите тип встречи
+              </Title>
+              <div className="choice-row" role="group" aria-label="Тип встречи">
+                {meetingTypes.map((option) => (
+                  <Button
+                    key={option.id}
+                    type="button"
+                    variant={meetingType.id === option.id ? 'filled' : 'light'}
+                    aria-pressed={meetingType.id === option.id}
+                    onClick={() => {
+                      if (meetingType.id === option.id) return;
+
+                      setMeetingType(option);
+                      setDuration(
+                        option.durationMinutes[0] ?? MeetingDuration.NUMBER_30,
+                      );
+                      setDates([]);
+                      setSelectedDate(null);
+                      setSelectedSlot(null);
+                      setErrorMessage(null);
+                      setFieldErrors({});
+                    }}
+                  >
+                    {option.title}
+                  </Button>
+                ))}
+              </div>
+            </section>
+
             <Card className="offer-card" padding="lg">
               <Text className="eyebrow">Предложение специалиста</Text>
               <div className="profile-summary">
@@ -718,10 +789,23 @@ function BookingPage() {
 function OwnerPage() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [meetingTypeTitle, setMeetingTypeTitle] = useState('');
+  const [meetingTypeDescription, setMeetingTypeDescription] = useState('');
+  const [meetingTypeDurations, setMeetingTypeDurations] = useState<
+    MeetingDuration[]
+  >([MeetingDuration.NUMBER_30]);
   const [bookings, setBookings] = useState<OwnerBooking[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [creatingMeetingType, setCreatingMeetingType] = useState(false);
+  const [meetingTypeError, setMeetingTypeError] = useState<string | null>(null);
+  const [meetingTypeSuccess, setMeetingTypeSuccess] = useState<string | null>(
+    null,
+  );
+  const [meetingTypeFieldErrors, setMeetingTypeFieldErrors] = useState<
+    Record<string, string>
+  >({});
 
   async function loadBookings() {
     setLoading(true);
@@ -785,6 +869,48 @@ function OwnerPage() {
     }
   }
 
+  async function submitMeetingType(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingMeetingType(true);
+    setMeetingTypeError(null);
+    setMeetingTypeSuccess(null);
+    setMeetingTypeFieldErrors({});
+
+    try {
+      const response = await createMeetingType(
+        {
+          title: meetingTypeTitle,
+          description: meetingTypeDescription,
+          durationMinutes: meetingTypeDurations,
+        },
+        { credentials: 'include' },
+      );
+
+      if (response.status === 201) {
+        setMeetingTypeTitle('');
+        setMeetingTypeDescription('');
+        setMeetingTypeDurations([MeetingDuration.NUMBER_30]);
+        setMeetingTypeSuccess('Тип встречи создан и доступен гостям.');
+        return;
+      }
+
+      const apiError = getApiError(response.data);
+      if (response.status === 422 && apiError?.fieldErrors) {
+        setMeetingTypeFieldErrors(apiError.fieldErrors);
+      }
+      setMeetingTypeError(
+        apiError?.message ??
+          'Не удалось создать тип встречи. Проверьте данные и попробуйте ещё раз.',
+      );
+    } catch {
+      setMeetingTypeError(
+        'Не удалось связаться с сервисом. Попробуйте создать тип позже.',
+      );
+    } finally {
+      setCreatingMeetingType(false);
+    }
+  }
+
   return (
     <main className="booking-main">
       <section
@@ -833,6 +959,68 @@ function OwnerPage() {
                 Выйти
               </Button>
             </div>
+            <form
+              className="booking-form meeting-type-form"
+              onSubmit={submitMeetingType}
+            >
+              <Title order={2}>Создать тип встречи</Title>
+              <TextInput
+                label="Название типа встречи"
+                name="meetingTypeTitle"
+                required
+                maxLength={120}
+                error={meetingTypeFieldErrors.title}
+                value={meetingTypeTitle}
+                onChange={(event) =>
+                  setMeetingTypeTitle(event.currentTarget.value)
+                }
+              />
+              <Textarea
+                label="Описание"
+                name="meetingTypeDescription"
+                required
+                maxLength={500}
+                error={meetingTypeFieldErrors.description}
+                value={meetingTypeDescription}
+                onChange={(event) =>
+                  setMeetingTypeDescription(event.currentTarget.value)
+                }
+              />
+              <fieldset className="duration-options">
+                <legend>Доступные длительности</legend>
+                {availableDurations.map((minutes) => (
+                  <Checkbox
+                    key={minutes}
+                    label={`${minutes} минут`}
+                    checked={meetingTypeDurations.includes(minutes)}
+                    onChange={(event) => {
+                      const isChecked = event.currentTarget.checked;
+                      setMeetingTypeDurations((current) =>
+                        isChecked
+                          ? [...current, minutes]
+                          : current.filter((value) => value !== minutes),
+                      );
+                    }}
+                  />
+                ))}
+                {meetingTypeFieldErrors.durationMinutes && (
+                  <Text className="form-error" role="alert">
+                    {meetingTypeFieldErrors.durationMinutes}
+                  </Text>
+                )}
+              </fieldset>
+              {meetingTypeError && (
+                <Text className="form-error" role="alert">
+                  {meetingTypeError}
+                </Text>
+              )}
+              {meetingTypeSuccess && (
+                <Text role="status">{meetingTypeSuccess}</Text>
+              )}
+              <Button type="submit" loading={creatingMeetingType}>
+                Создать тип встречи
+              </Button>
+            </form>
             {bookings.length === 0 ? (
               <Text className="booking-empty" role="status">
                 Пока нет предстоящих встреч.

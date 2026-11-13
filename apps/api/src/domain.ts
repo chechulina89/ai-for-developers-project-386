@@ -1,5 +1,4 @@
 export const timeZone = 'Asia/Almaty';
-export const meetingTypeId = 'online-consultation';
 export const meetingDurations = [30, 45, 60] as const;
 
 export type MeetingDuration = (typeof meetingDurations)[number];

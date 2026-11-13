@@ -9,6 +9,21 @@ export type StoredBooking = BookingInterval & {
   confirmationCode: string;
 };
 
+export type StoredMeetingType = {
+  id: string;
+  title: string;
+  description: string;
+  durationMinutes: MeetingDuration[];
+  preparationInstructions?: string;
+  onlineInstructions: string;
+  priceKzt: number;
+  owner: {
+    name: string;
+    description: string;
+    photoUrl: string;
+  };
+};
+
 type IdempotencyRecord = {
   fingerprint: string;
   booking: StoredBooking;
@@ -27,6 +42,7 @@ const loginLimit = 5;
 
 export class MemoryStore {
   readonly bookings: StoredBooking[] = [];
+  readonly meetingTypes: StoredMeetingType[] = [];
   readonly #idempotency = new Map<string, IdempotencyRecord>();
   readonly #sessions = new Map<string, number>();
   readonly #loginAttempts = new Map<string, LoginAttempt>();
@@ -54,6 +70,10 @@ export class MemoryStore {
 
   addBooking(booking: StoredBooking) {
     this.bookings.push(booking);
+  }
+
+  addMeetingType(meetingType: StoredMeetingType) {
+    this.meetingTypes.push(meetingType);
   }
 
   createSession(token: string, expiresAt: number) {

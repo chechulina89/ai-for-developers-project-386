@@ -14,6 +14,7 @@ import { App } from './App.js';
 
 const api = vi.hoisted(() => ({
   createBooking: vi.fn(),
+  createMeetingType: vi.fn(),
   createOwnerSession: vi.fn(),
   deleteOwnerSession: vi.fn(),
   getAvailability: vi.fn(),
@@ -42,6 +43,14 @@ const meetingType = {
     description: 'Демонстрационный профиль из двух предложений.',
     photoUrl: '/demo-specialist.svg',
   },
+};
+
+const additionalMeetingType = {
+  ...meetingType,
+  id: 'case-review',
+  title: 'Разбор ситуации',
+  description: 'Подробный разбор вопроса клиента.',
+  durationMinutes: [30],
 };
 
 function createAvailability(from: string, to: string, withSlots = true) {
@@ -90,6 +99,7 @@ beforeEach(() => {
   });
 
   api.createBooking.mockReset();
+  api.createMeetingType.mockReset();
   api.createOwnerSession.mockReset();
   api.deleteOwnerSession.mockReset();
   api.getAvailability.mockReset();
@@ -134,6 +144,8 @@ describe('Meetly homepage', () => {
       within(benefits).getByText('Понятно о формате заранее'),
     ).toBeTruthy();
     expect(within(benefits).getByText('Удобный выбор')).toBeTruthy();
+    expect(screen.queryByText('В разработке')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Записаться' })).toBeTruthy();
     expect(
       screen.getByRole('heading', {
         level: 2,
@@ -181,7 +193,7 @@ describe('booking page', () => {
         name: 'Запись на встречу',
       }),
     ).toBeTruthy();
-    expect(screen.getByText(meetingType.title)).toBeTruthy();
+    expect(screen.getAllByText(meetingType.title).length).toBeGreaterThan(0);
 
     const durationGroup = screen.getByRole('group', {
       name: 'Длительность встречи',
@@ -224,6 +236,14 @@ describe('booking page', () => {
       }),
     ).toBeTruthy();
     expect(screen.getByText(/MLY-1234ABCD/)).toBeTruthy();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать код' }));
+    expect(await screen.findByText('Код скопирован.')).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith('MLY-1234ABCD');
     expect(api.createBooking).toHaveBeenCalledWith(
       expect.objectContaining({
         meetingTypeId: meetingType.id,
@@ -234,6 +254,33 @@ describe('booking page', () => {
         headers: { 'Idempotency-Key': expect.any(String) },
       }),
     );
+  });
+
+  it('lets the guest select a different owner-created meeting type', async () => {
+    api.getMeetingTypes.mockResolvedValue({
+      status: 200,
+      data: { meetingTypes: [meetingType, additionalMeetingType] },
+    });
+
+    render(<App />);
+
+    const typeGroup = await screen.findByRole('group', {
+      name: 'Тип встречи',
+    });
+    fireEvent.click(
+      within(typeGroup).getByRole('button', {
+        name: additionalMeetingType.title,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.getAvailability).toHaveBeenLastCalledWith(
+        additionalMeetingType.id,
+        expect.objectContaining({ durationMinutes: 30 }),
+        { credentials: 'include' },
+      );
+    });
+    expect(screen.getByText(additionalMeetingType.description)).toBeTruthy();
   });
 
   it('shows no availability and disables submission when the API returns no slots', async () => {
@@ -357,6 +404,55 @@ describe('owner page', () => {
       { credentials: 'include' },
     );
     expect(api.getOwnerBookings).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets the owner create a meeting type guests can select', async () => {
+    api.getOwnerBookings.mockResolvedValueOnce({
+      status: 401,
+      data: { code: 'UNAUTHENTICATED', message: 'Войдите.' },
+    });
+    api.createOwnerSession.mockResolvedValue({ status: 204 });
+    api.getOwnerBookings.mockResolvedValueOnce({
+      status: 200,
+      data: { timeZone: 'Asia/Almaty', bookings: [] },
+    });
+    api.createMeetingType.mockResolvedValue({
+      status: 201,
+      data: additionalMeetingType,
+    });
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /Логин/ }), {
+      target: { value: 'owner' },
+    });
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Название типа встречи' }),
+      { target: { value: additionalMeetingType.title } },
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Описание' }), {
+      target: { value: additionalMeetingType.description },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Создать тип встречи' }),
+    );
+
+    expect(
+      await screen.findByText('Тип встречи создан и доступен гостям.'),
+    ).toBeTruthy();
+    expect(api.createMeetingType).toHaveBeenCalledWith(
+      {
+        title: additionalMeetingType.title,
+        description: additionalMeetingType.description,
+        durationMinutes: [30],
+      },
+      { credentials: 'include' },
+    );
   });
 });
 

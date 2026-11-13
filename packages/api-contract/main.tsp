@@ -32,6 +32,17 @@ model MeetingTypesResponse {
   meetingTypes: MeetingType[];
 }
 
+model CreateMeetingTypeRequest {
+  title: string;
+  description: string;
+  durationMinutes: MeetingDuration[];
+}
+
+model MeetingTypeCreatedResponse {
+  @statusCode _: 201;
+  @body body: MeetingType;
+}
+
 model AvailabilitySlot {
   startAt: utcDateTime;
   endAt: utcDateTime;
@@ -171,6 +182,14 @@ op deleteOwnerSession(): NoContentResponse;
 @route("/api/owner/bookings")
 @get
 op getOwnerBookings(): OwnerBookingsResponse | AuthenticationErrorResponse;
+
+@route("/api/owner/meeting-types")
+@post
+op createMeetingType(
+  @body request: CreateMeetingTypeRequest,
+): MeetingTypeCreatedResponse
+  | ValidationErrorResponse
+  | AuthenticationErrorResponse;
 
 @route("/health")
 @get

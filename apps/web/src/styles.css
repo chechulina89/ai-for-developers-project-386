@@ -348,6 +348,14 @@ a {
   gap: 18px;
 }
 
+.profile-summary > div {
+  min-width: 0;
+}
+
+.profile-summary p {
+  overflow-wrap: anywhere;
+}
+
 .profile-photo {
   width: 76px;
   height: 76px;
@@ -364,6 +372,19 @@ a {
 .booking-form {
   display: grid;
   gap: 16px;
+}
+
+.duration-options {
+  display: grid;
+  padding: 0;
+  border: 0;
+  gap: 12px;
+}
+
+.duration-options legend {
+  margin-bottom: 12px;
+  color: #172d29;
+  font-weight: 650;
 }
 
 .booking-form h2 {
@@ -597,6 +618,18 @@ a {
 
   .date-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 400px) {
+  .profile-summary {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .profile-photo {
+    width: 60px;
+    height: 60px;
   }
 }
 

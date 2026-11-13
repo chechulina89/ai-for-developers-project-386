@@ -2,19 +2,40 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
-import { MemoryStore, type StoredBooking } from './store.js';
+import {
+  MemoryStore,
+  type StoredBooking,
+  type StoredMeetingType,
+} from './store.js';
 
 const fixedNow = new Date('2026-11-10T09:00:00.000Z');
 const firstDate = '2026-11-11';
+const testMeetingType: StoredMeetingType = {
+  id: 'online-consultation',
+  title: 'Демонстрационная онлайн-консультация',
+  description: 'Индивидуальная онлайн-встреча.',
+  durationMinutes: [30, 45, 60],
+  onlineInstructions: 'Подключение онлайн.',
+  priceKzt: 5000,
+  owner: {
+    name: 'Демонстрационный специалист',
+    description: 'Демонстрационный профиль.',
+    photoUrl: '/demo-specialist.svg',
+  },
+};
 
 async function withApi(
   run: (baseUrl: string, store: MemoryStore) => Promise<void>,
   options: {
     store?: MemoryStore;
     now?: () => Date;
+    seedMeetingType?: boolean;
   } = {},
 ) {
   const store = options.store ?? new MemoryStore();
+  if (options.seedMeetingType !== false) {
+    store.addMeetingType(testMeetingType);
+  }
   const app = buildApp({
     ownerLogin: 'owner@example.test',
     ownerPassword: 'a-test-password',
@@ -37,9 +58,10 @@ function bookingRequest(
   startAt: string,
   durationMinutes = 30,
   name = 'Алексей Клиент',
+  selectedMeetingTypeId = testMeetingType.id,
 ) {
   return {
-    meetingTypeId: 'online-consultation',
+    meetingTypeId: selectedMeetingTypeId,
     startAt,
     durationMinutes,
     guest: { name, phone: '+7 (700) 123-45-67' },
@@ -56,6 +78,7 @@ async function createBooking(
   durationMinutes: number,
   key = idempotencyKey(),
   name?: string,
+  selectedMeetingTypeId = testMeetingType.id,
 ) {
   return fetch(`${baseUrl}/api/bookings`, {
     method: 'POST',
@@ -63,7 +86,9 @@ async function createBooking(
       'Content-Type': 'application/json',
       'Idempotency-Key': key,
     },
-    body: JSON.stringify(bookingRequest(startAt, durationMinutes, name)),
+    body: JSON.stringify(
+      bookingRequest(startAt, durationMinutes, name, selectedMeetingTypeId),
+    ),
   });
 }
 
@@ -216,6 +241,94 @@ describe('booking HTTP API', () => {
     );
   });
 
+  it('lets the owner create two types guests can book and rejects cross-type conflicts', async () => {
+    await withApi(
+      async (baseUrl) => {
+        const login = await fetch(`${baseUrl}/api/owner/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            login: 'owner@example.test',
+            password: 'a-test-password',
+          }),
+        });
+        const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+        const createType = (title: string) =>
+          fetch(`${baseUrl}/api/owner/meeting-types`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Cookie: cookie,
+            },
+            body: JSON.stringify({
+              title,
+              description: 'Подробный разбор вопроса клиента.',
+              durationMinutes: [30, 60],
+            }),
+          });
+        const firstCreated = await createType('Консультация');
+        const firstType = await firstCreated.json();
+        const secondCreated = await createType('Разбор ситуации');
+        const secondType = await secondCreated.json();
+        const list = await fetch(`${baseUrl}/api/meeting-types`);
+        const listBody = await list.json();
+
+        expect(login.status).toBe(204);
+        expect(firstCreated.status).toBe(201);
+        expect(secondCreated.status).toBe(201);
+        expect(secondType).toMatchObject({
+          title: 'Разбор ситуации',
+          durationMinutes: [30, 60],
+        });
+        expect(listBody.meetingTypes).toHaveLength(2);
+        expect(
+          listBody.meetingTypes.some(
+            (meetingType: { id: string }) => meetingType.id === secondType.id,
+          ),
+        ).toBe(true);
+        const availability = await fetch(
+          `${baseUrl}/api/meeting-types/${secondType.id}/availability?from=${firstDate}&to=2026-11-24&durationMinutes=30`,
+        );
+        const availabilityBody = await availability.json();
+        expect(availability.status).toBe(200);
+        expect(availabilityBody.dates[0].slots[0].startAt).toBe(
+          `${firstDate}T09:00:00+05:00`,
+        );
+
+        const firstBooking = await createBooking(
+          baseUrl,
+          `${firstDate}T10:00:00+05:00`,
+          30,
+          idempotencyKey(),
+          undefined,
+          firstType.id,
+        );
+        const conflictingBooking = await fetch(`${baseUrl}/api/bookings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': idempotencyKey(),
+          },
+          body: JSON.stringify(
+            bookingRequest(
+              `${firstDate}T10:00:00+05:00`,
+              30,
+              'Другой клиент',
+              secondType.id,
+            ),
+          ),
+        });
+
+        expect(firstBooking.status).toBe(201);
+        expect(conflictingBooking.status).toBe(409);
+        expect(await conflictingBooking.json()).toMatchObject({
+          code: 'SLOT_UNAVAILABLE',
+        });
+      },
+      { seedMeetingType: false },
+    );
+  });
+
   it('serializes concurrent overlapping HTTP requests so exactly one wins', async () => {
     await withApi(async (baseUrl) => {
       const responses = await Promise.all([
@@ -286,6 +399,26 @@ describe('booking HTTP API', () => {
         expect(await expiredReplay.json()).toMatchObject({
           code: 'SLOT_UNAVAILABLE',
         });
+      },
+      { now: () => new Date(currentTime) },
+    );
+  });
+
+  it('replays an idempotent request across the booking-window date boundary', async () => {
+    let currentTime = new Date('2026-11-10T18:55:00.000Z');
+
+    await withApi(
+      async (baseUrl) => {
+        const key = idempotencyKey();
+        const startAt = `${firstDate}T09:00:00+05:00`;
+        const first = await createBooking(baseUrl, startAt, 30, key);
+
+        currentTime = new Date('2026-11-10T19:05:00.000Z');
+        const replay = await createBooking(baseUrl, startAt, 30, key);
+
+        expect(first.status).toBe(201);
+        expect(replay.status).toBe(201);
+        expect(await replay.json()).toEqual(await first.json());
       },
       { now: () => new Date(currentTime) },
     );

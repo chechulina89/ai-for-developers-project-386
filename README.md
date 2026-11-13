@@ -1,9 +1,9 @@
 # Meetly
 
-Meetly demonstrates a client booking flow for a single preconfigured online
-meeting. Guests can choose a duration, date, and available time, submit their
-name and phone number, and receive a confirmation. The owner signs in at
-`/owner` to see upcoming bookings.
+Meetly demonstrates a client booking flow for owner-configured online meeting
+types. Guests can choose a meeting type, duration, date, and available time,
+submit their name and phone number, and receive a confirmation. The owner signs
+in at `/owner` to create meeting types and see upcoming bookings.
 
 The current profile is explicitly a demo placeholder. Bookings, idempotency
 keys, and owner sessions are held in memory by one API process and can be lost
