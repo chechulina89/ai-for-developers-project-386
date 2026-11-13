@@ -37,6 +37,42 @@ const demoOwner = {
   photoUrl: '/demo-specialist.svg',
 };
 
+const defaultOnlineInstructions =
+  'Ссылка для подключения будет отправлена отдельно.';
+
+const defaultMeetingTypes: StoredMeetingType[] = [
+  {
+    id: 'consultation-lawyer',
+    title: 'Консультация с юристом',
+    description:
+      'Индивидуальная онлайн-консультация с юристом: разбор вашей ситуации и план дальнейших действий.',
+    durationMinutes: [30, 45, 60],
+    onlineInstructions: defaultOnlineInstructions,
+    priceKzt: 5000,
+    owner: demoOwner,
+  },
+  {
+    id: 'consultation-psychologist',
+    title: 'Консультация с психологом',
+    description:
+      'Индивидуальная онлайн-консультация с психологом в конфиденциальном формате.',
+    durationMinutes: [30, 45, 60],
+    onlineInstructions: defaultOnlineInstructions,
+    priceKzt: 7000,
+    owner: demoOwner,
+  },
+];
+
+function createDefaultStore() {
+  const store = new MemoryStore();
+
+  for (const meetingType of defaultMeetingTypes) {
+    store.addMeetingType({ ...meetingType, owner: { ...meetingType.owner } });
+  }
+
+  return store;
+}
+
 type AppConfig = {
   ownerLogin: string;
   ownerPassword: string;
@@ -285,7 +321,7 @@ function validateBookingInput(
 
 export function buildApp(config: AppConfig) {
   const app = Fastify({ logger: true });
-  const store = config.store ?? new MemoryStore();
+  const store = config.store ?? createDefaultStore();
   const now = config.now ?? (() => new Date());
   const isProduction =
     config.isProduction ?? process.env.NODE_ENV === 'production';
@@ -645,7 +681,7 @@ export function buildApp(config: AppConfig) {
         title,
         description,
         durationMinutes: durations,
-        onlineInstructions: 'Ссылка для подключения будет отправлена отдельно.',
+        onlineInstructions: defaultOnlineInstructions,
         priceKzt: 5000,
         owner: demoOwner,
       };
