@@ -118,6 +118,39 @@ async function createBooking(
 }
 
 describe('booking HTTP API', () => {
+  it('seeds two default meeting types when no store is provided', async () => {
+    const app = buildApp({
+      ownerLogin: 'owner@example.test',
+      ownerPassword: 'a-test-password',
+      now: () => new Date(fixedNow),
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/meeting-types',
+      });
+      const body = response.json();
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        body.meetingTypes.map((meetingType: { id: string }) => meetingType.id),
+      ).toEqual(['consultation-lawyer', 'consultation-psychologist']);
+      expect(body.meetingTypes[0]).toMatchObject({
+        title: 'Консультация с юристом',
+        durationMinutes: [30, 45, 60],
+        priceKzt: 5000,
+      });
+      expect(body.meetingTypes[1]).toMatchObject({
+        title: 'Консультация с психологом',
+        durationMinutes: [30, 45, 60],
+        priceKzt: 7000,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('returns the configured demo offer and a complete 14-day availability range', async () => {
     await withApi(async (fetch) => {
       const offersResponse = await fetch('/api/meeting-types');

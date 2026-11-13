@@ -23,6 +23,10 @@ test('guest books a slot and the owner sees the meeting', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Запись на встречу' }),
   ).toBeVisible();
+  await page
+    .getByRole('group', { name: 'Тип встречи' })
+    .getByRole('button', { name: 'Демонстрационная онлайн-консультация' })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'Демонстрационная онлайн-консультация' }),
   ).toBeVisible();
