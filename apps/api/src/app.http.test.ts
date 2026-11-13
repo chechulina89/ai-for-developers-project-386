@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import {
@@ -24,8 +23,17 @@ const testMeetingType: StoredMeetingType = {
   },
 };
 
+type TestFetch = (
+  input: string,
+  init?: {
+    method?: 'GET' | 'POST' | 'DELETE';
+    headers?: Record<string, string>;
+    body?: string;
+  },
+) => Promise<Response>;
+
 async function withApi(
-  run: (baseUrl: string, store: MemoryStore) => Promise<void>,
+  run: (fetch: TestFetch, store: MemoryStore) => Promise<void>,
   options: {
     store?: MemoryStore;
     now?: () => Date;
@@ -42,13 +50,30 @@ async function withApi(
     now: options.now ?? (() => new Date(fixedNow)),
     store,
   });
+  const fetch: TestFetch = async (input, init = {}) => {
+    const url = new URL(input, 'http://127.0.0.1');
+    const response = await app.inject({
+      method: init.method ?? 'GET',
+      url: `${url.pathname}${url.search}`,
+      headers: init.headers,
+      payload: init.body,
+    });
+    const headers = Object.fromEntries(
+      Object.entries(response.headers).flatMap(([name, value]) =>
+        value === undefined
+          ? []
+          : [[name, Array.isArray(value) ? value.join(', ') : String(value)]],
+      ),
+    );
 
-  await app.listen({ host: '127.0.0.1', port: 0 });
-
-  const address = app.server.address() as AddressInfo;
+    return new Response(response.statusCode === 204 ? null : response.body, {
+      status: response.statusCode,
+      headers,
+    });
+  };
 
   try {
-    await run(`http://127.0.0.1:${address.port}`, store);
+    await run(fetch, store);
   } finally {
     await app.close();
   }
@@ -73,14 +98,14 @@ function idempotencyKey() {
 }
 
 async function createBooking(
-  baseUrl: string,
+  fetch: TestFetch,
   startAt: string,
   durationMinutes: number,
   key = idempotencyKey(),
   name?: string,
   selectedMeetingTypeId = testMeetingType.id,
 ) {
-  return fetch(`${baseUrl}/api/bookings`, {
+  return fetch('/api/bookings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -94,8 +119,8 @@ async function createBooking(
 
 describe('booking HTTP API', () => {
   it('returns the configured demo offer and a complete 14-day availability range', async () => {
-    await withApi(async (baseUrl) => {
-      const offersResponse = await fetch(`${baseUrl}/api/meeting-types`);
+    await withApi(async (fetch) => {
+      const offersResponse = await fetch('/api/meeting-types');
       const offers = await offersResponse.json();
 
       expect(offersResponse.status).toBe(200);
@@ -105,7 +130,7 @@ describe('booking HTTP API', () => {
       );
 
       const availabilityResponse = await fetch(
-        `${baseUrl}/api/meeting-types/online-consultation/availability?from=${firstDate}&to=2026-11-24&durationMinutes=30`,
+        `/api/meeting-types/online-consultation/availability?from=${firstDate}&to=2026-11-24&durationMinutes=30`,
       );
       const availability = await availabilityResponse.json();
 
@@ -124,9 +149,9 @@ describe('booking HTTP API', () => {
   });
 
   it('returns a validation error for an invalid availability range', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const response = await fetch(
-        `${baseUrl}/api/meeting-types/online-consultation/availability?from=2026-11-10&to=2026-11-25&durationMinutes=90`,
+        `/api/meeting-types/online-consultation/availability?from=2026-11-10&to=2026-11-25&durationMinutes=90`,
       );
 
       expect(response.status).toBe(422);
@@ -137,9 +162,9 @@ describe('booking HTTP API', () => {
   });
 
   it('creates a booking and returns a confirmation without exposing the phone', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const response = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T09:00:00+05:00`,
         30,
       );
@@ -159,8 +184,8 @@ describe('booking HTTP API', () => {
   });
 
   it('rejects invalid booking data with field errors', async () => {
-    await withApi(async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/bookings`, {
+    await withApi(async (fetch) => {
+      const response = await fetch('/api/bookings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,19 +208,19 @@ describe('booking HTTP API', () => {
   });
 
   it('blocks partial overlap between durations but allows exact adjacency', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const first = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T10:00:00+05:00`,
         60,
       );
       const overlap = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T10:30:00+05:00`,
         30,
       );
       const adjacent = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T11:00:00+05:00`,
         30,
       );
@@ -225,9 +250,9 @@ describe('booking HTTP API', () => {
     store.addBooking(existing);
 
     await withApi(
-      async (baseUrl) => {
+      async (fetch) => {
         const response = await createBooking(
-          baseUrl,
+          fetch,
           `${firstDate}T10:30:00+05:00`,
           30,
         );
@@ -243,8 +268,8 @@ describe('booking HTTP API', () => {
 
   it('lets the owner create two types guests can book and rejects cross-type conflicts', async () => {
     await withApi(
-      async (baseUrl) => {
-        const login = await fetch(`${baseUrl}/api/owner/session`, {
+      async (fetch) => {
+        const login = await fetch('/api/owner/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -254,7 +279,7 @@ describe('booking HTTP API', () => {
         });
         const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
         const createType = (title: string) =>
-          fetch(`${baseUrl}/api/owner/meeting-types`, {
+          fetch('/api/owner/meeting-types', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -270,7 +295,7 @@ describe('booking HTTP API', () => {
         const firstType = await firstCreated.json();
         const secondCreated = await createType('Разбор ситуации');
         const secondType = await secondCreated.json();
-        const list = await fetch(`${baseUrl}/api/meeting-types`);
+        const list = await fetch('/api/meeting-types');
         const listBody = await list.json();
 
         expect(login.status).toBe(204);
@@ -287,7 +312,7 @@ describe('booking HTTP API', () => {
           ),
         ).toBe(true);
         const availability = await fetch(
-          `${baseUrl}/api/meeting-types/${secondType.id}/availability?from=${firstDate}&to=2026-11-24&durationMinutes=30`,
+          `/api/meeting-types/${secondType.id}/availability?from=${firstDate}&to=2026-11-24&durationMinutes=30`,
         );
         const availabilityBody = await availability.json();
         expect(availability.status).toBe(200);
@@ -296,14 +321,14 @@ describe('booking HTTP API', () => {
         );
 
         const firstBooking = await createBooking(
-          baseUrl,
+          fetch,
           `${firstDate}T10:00:00+05:00`,
           30,
           idempotencyKey(),
           undefined,
           firstType.id,
         );
-        const conflictingBooking = await fetch(`${baseUrl}/api/bookings`, {
+        const conflictingBooking = await fetch('/api/bookings', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -330,10 +355,10 @@ describe('booking HTTP API', () => {
   });
 
   it('serializes concurrent overlapping HTTP requests so exactly one wins', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const responses = await Promise.all([
-        createBooking(baseUrl, `${firstDate}T13:00:00+05:00`, 60),
-        createBooking(baseUrl, `${firstDate}T13:30:00+05:00`, 30),
+        createBooking(fetch, `${firstDate}T13:00:00+05:00`, 60),
+        createBooking(fetch, `${firstDate}T13:30:00+05:00`, 30),
       ]);
 
       expect(responses.map((response) => response.status).sort()).toEqual([
@@ -348,24 +373,24 @@ describe('booking HTTP API', () => {
   });
 
   it('replays an identical idempotent request and rejects a reused key with changed data', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const key = idempotencyKey();
       const first = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T14:00:00+05:00`,
         30,
         key,
       );
       const firstBody = await first.json();
       const replay = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T14:00:00+05:00`,
         30,
         key,
       );
       const replayBody = await replay.json();
       const changed = await createBooking(
-        baseUrl,
+        fetch,
         `${firstDate}T14:00:00+05:00`,
         30,
         key,
@@ -386,13 +411,13 @@ describe('booking HTTP API', () => {
     let currentTime = new Date(fixedNow);
 
     await withApi(
-      async (baseUrl) => {
+      async (fetch) => {
         const key = idempotencyKey();
         const startAt = '2026-11-12T09:00:00+05:00';
-        const first = await createBooking(baseUrl, startAt, 30, key);
+        const first = await createBooking(fetch, startAt, 30, key);
 
         currentTime = new Date(currentTime.getTime() + 24 * 60 * 60 * 1000 + 1);
-        const expiredReplay = await createBooking(baseUrl, startAt, 30, key);
+        const expiredReplay = await createBooking(fetch, startAt, 30, key);
 
         expect(first.status).toBe(201);
         expect(expiredReplay.status).toBe(409);
@@ -408,13 +433,13 @@ describe('booking HTTP API', () => {
     let currentTime = new Date('2026-11-10T18:55:00.000Z');
 
     await withApi(
-      async (baseUrl) => {
+      async (fetch) => {
         const key = idempotencyKey();
         const startAt = `${firstDate}T09:00:00+05:00`;
-        const first = await createBooking(baseUrl, startAt, 30, key);
+        const first = await createBooking(fetch, startAt, 30, key);
 
         currentTime = new Date('2026-11-10T19:05:00.000Z');
-        const replay = await createBooking(baseUrl, startAt, 30, key);
+        const replay = await createBooking(fetch, startAt, 30, key);
 
         expect(first.status).toBe(201);
         expect(replay.status).toBe(201);
@@ -425,14 +450,14 @@ describe('booking HTTP API', () => {
   });
 
   it('protects owner bookings, applies temporary login rate limits, and logs out', async () => {
-    await withApi(async (baseUrl) => {
-      const unauthorized = await fetch(`${baseUrl}/api/owner/bookings`);
+    await withApi(async (fetch) => {
+      const unauthorized = await fetch('/api/owner/bookings');
       expect(unauthorized.status).toBe(401);
       expect(await unauthorized.json()).toMatchObject({
         code: 'UNAUTHENTICATED',
       });
 
-      const wrongCredentials = await fetch(`${baseUrl}/api/owner/session`, {
+      const wrongCredentials = await fetch('/api/owner/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ login: 'wrong', password: 'wrong' }),
@@ -442,7 +467,7 @@ describe('booking HTTP API', () => {
         code: 'INVALID_CREDENTIALS',
       });
 
-      const successfulLogin = await fetch(`${baseUrl}/api/owner/session`, {
+      const successfulLogin = await fetch('/api/owner/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -455,8 +480,8 @@ describe('booking HTTP API', () => {
       expect(cookie).toContain('HttpOnly');
       expect(cookie).toContain('SameSite=Lax');
 
-      await createBooking(baseUrl, `${firstDate}T15:00:00+05:00`, 30);
-      const ownerBookings = await fetch(`${baseUrl}/api/owner/bookings`, {
+      await createBooking(fetch, `${firstDate}T15:00:00+05:00`, 30);
+      const ownerBookings = await fetch('/api/owner/bookings', {
         headers: { Cookie: cookie?.split(';')[0] ?? '' },
       });
 
@@ -471,13 +496,13 @@ describe('booking HTTP API', () => {
         ],
       });
 
-      const logout = await fetch(`${baseUrl}/api/owner/session`, {
+      const logout = await fetch('/api/owner/session', {
         method: 'DELETE',
         headers: { Cookie: cookie?.split(';')[0] ?? '' },
       });
       expect(logout.status).toBe(204);
 
-      const afterLogout = await fetch(`${baseUrl}/api/owner/bookings`, {
+      const afterLogout = await fetch('/api/owner/bookings', {
         headers: { Cookie: cookie?.split(';')[0] ?? '' },
       });
       expect(afterLogout.status).toBe(401);
@@ -488,8 +513,8 @@ describe('booking HTTP API', () => {
     let currentTime = new Date(fixedNow);
 
     await withApi(
-      async (baseUrl) => {
-        const login = await fetch(`${baseUrl}/api/owner/session`, {
+      async (fetch) => {
+        const login = await fetch('/api/owner/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -502,7 +527,7 @@ describe('booking HTTP API', () => {
         currentTime = new Date(
           currentTime.getTime() + 7 * 24 * 60 * 60 * 1000 + 1,
         );
-        const response = await fetch(`${baseUrl}/api/owner/bookings`, {
+        const response = await fetch('/api/owner/bookings', {
           headers: { Cookie: cookie },
         });
 
@@ -517,10 +542,10 @@ describe('booking HTTP API', () => {
   });
 
   it('returns 429 with Retry-After after repeated failed login attempts', async () => {
-    await withApi(async (baseUrl) => {
+    await withApi(async (fetch) => {
       const attempts = await Promise.all(
         Array.from({ length: 5 }, () =>
-          fetch(`${baseUrl}/api/owner/session`, {
+          fetch('/api/owner/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ login: 'wrong', password: 'wrong' }),
